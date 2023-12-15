@@ -3,8 +3,11 @@ A wrapper for the webservice (REST API) for Netdisco.
 """
 
 import requests
-import base64
+from requests.auth import HTTPBasicAuth
 import json
+
+# Delete TLS warning
+requests.packages.urllib3.disable_warnings()
 
 class NetdiscoAPI:
     def __init__(
@@ -17,7 +20,7 @@ class NetdiscoAPI:
         enforce_encryption=True,
     ):
         """
-        Log in to Netdisco Web service  (Request a session ID)
+        Log in to Netdisco Web service (Request a session ID)
 
         Args:
             host: The address of the netdisco server host including protocol (https://)
@@ -32,14 +35,13 @@ class NetdiscoAPI:
         if "https://" not in host and enforce_encryption:
             raise ValueError("Unencrypted host not allowed: {host}")
 
-
         # The session to use for all requests
         self._session = requests.Session()
 
-        # The URL of the FD server
+        # The URL of the Netdisco server
         self._url = f"{host}"
 
-        # Log in to get this ID from FD
+        # Log in to get this ID from Netdisco
         self._session_id = None
 
         # Pass to requests
@@ -48,123 +50,96 @@ class NetdiscoAPI:
         # root request
         self._root_uri = "api/v1/"
 
-        # Login to FD (Get a session_id)
+        # Login to Netdisco (Get a session_id)
         if login:
            self.login(user, password)
 
     def login(self, user, password):
         """
-        Login to FD by getting a session ID to include in posts
+        Login to Netdisco by getting a session ID to include in posts
 
         Args:
             user (str): The username to login as
             password (str): The password of the user
-            database (str): The name of the LDAP database/server to use
 
         Returns:
             Session id (str)
         """
-        msg = user+":"+password
-        msg_bytes = msg.encode('ascii')
-        bytes_b64 = base64.b64encode(msg_bytes)
-        msg_b64 = bytes_b64.decode('ascii')
-
-        data = {"authorization": 'Basic '+ msg_b64}
-        json_token = self._post(None,"login", data)
+       
+        auth = HTTPBasicAuth(user, password)
+        json_token = self._post(auth, None, 'login')
         self._session_id = json.loads(json_token)['api_key']
         return self._session_id
 
     def logout(self):
         """
-        Log out of FusionDirectory. Deletes session ID
-
-        Returns:
-            Bool: True
+        Log out of Netdisco. Deletes session ID       
         """
 
-        r=self._get("logout")
+        self._get('logout')
         self._session_id = None
-        return r
 
     def _get(self, uri, payload=None):
         """
-        Send data to the Netdisco server
+        Receive data from the Netdisco server
 
         Args:
-            uri build
+            uri: URI build
+            payload: data (Default: None)
 
         Returns:
-            result: The value of the key 'result' in the JSON returned by the server
+            result: The content of the key 'text' in the JSON returned by the server
         """
+
+        # build headers based on custom and permanent headers
         headers={}
         headers_dialog={'accept': 'application/json'}
-        headers_auth={'Authorization':self._session_id}
+        headers_auth={'Authorization': self._session_id}
         headers.update(headers_auth)
         headers.update(headers_dialog)
-        # Post
+
+        # http get
         r = self._session.get(self._url + uri, verify=self._verify_cert, headers=headers, params=payload)
-        #print(r.url)
         return r.text
 
-    def _post(self, data, uri="", custom_headers=None):
+    def _post(self, auth, data, uri=''):
         """
         Send data to the NetDisco server
 
         Args:
+            auth: Authentication informations (base64)
             data: The data to post
+            uri (str): URI build
 
         Returns:
             result: The value of the key 'result' in the JSON returned by the server
         """
 
-
-        # with REST api , url coudl change, so if url isn't specified we take main url ( mainly for RPC method)
+        # with REST api , url could change, so if url isn't specified we take main url ( mainly for RPC method)
         url=self._url + uri
-        # buidl headers based on custom and permanent headers
+
+        # build headers based on custom and permanent headers
         headers={}
         headers_dialog={'accept': 'application/json'}
         headers.update(headers_dialog)
-        headers.update(custom_headers)
 
-        # Post
-        r = self._session.post(url, json=data, verify=self._verify_cert,headers=headers)
+        # http post
+        r = self._session.post(url, auth=auth, json=data, verify=self._verify_cert, headers=headers)
         # Raise exception on error codes
         #r.raise_for_status()
         # Get the json in the response
         #r = r.json()
         if r.status_code == 200 :
-            #print(r.text+"  " + str(r.status_code))
             return(r.text)
         else :
-            #print("ici")
-            print(r.text+"  " + str(r.status_code))
+            print(r.text + "  " + str(r.status_code))
 
-    """"
-    Search device ( like network component), following arguments could be used :
-
-    Args :
-        q (string) : Partial match of Device contact, serial, module serials, location, name, description, dns, or any IP alias
-        name (string): Partial match of the Device name
-        location (string) : Partial match of the Device location
-        dns (sring) : Partial match of any of the Device IP aliases
-        ip (string) : IP or IP Prefix within which the Device must have an interface address
-        description (string): Partial match of the Device description
-        mac (string): MAC Address of the Device or any of its Interfaces
-        model (string): Exact match of the Device model
-        os (string): Exact match of the Device operating system
-        os_ver (string): Exact match of the Device operating system version
-        vendor (string): Exact match of the Device vendor
-        layers (string): OSI Layer which the device must support
-        matchall (bool) : If true, all fields (except "q") must match the Device
-
-    Returns:
-        result: Array value found
-    """
+    
     def search_node(self, payload):
-        r=self._get(self._root_uri+"search/node", payload=payload)
+        r=self._get(self._root_uri + 'search/node', payload=payload)
         return r
 
-    """"
+    """
     Search node ( like computer / server all not a network management), following arguments could be used :
 
     Args :
@@ -179,11 +154,35 @@ class NetdiscoAPI:
     Returns:
         result: Array value found
     """
+
     def search_device(self, payload):
-        r=self._get(self._root_uri+"search/device", payload=payload)
+        """
+        Search device ( like network component), following arguments could be used :
+
+        Args :
+            q (str) : Partial match of Device contact, serial, module serials, location, name, description, dns, or any IP alias
+            name (str): Partial match of the Device name
+            location (str) : Partial match of the Device location
+            dns (str) : Partial match of any of the Device IP aliases
+            ip (str) : IP or IP Prefix within which the Device must have an interface address
+            description (str): Partial match of the Device description
+            mac (str): MAC Address of the Device or any of its Interfaces
+            model (str): Exact match of the Device model
+            os (str): Exact match of the Device operating system
+            os_ver (str): Exact match of the Device operating system version
+            vendor (str): Exact match of the Device vendor
+            layers (str): OSI Layer which the device must support
+            matchall (bool): If true, all fields (except "q") must match the Device (Default value : false)
+            seeallcolumns (bool): If true, all columns of the Device will be shown (Default value : false)
+
+        Returns:
+            result: Array value found
+        """
+
+        r=self._get(self._root_uri + 'search/device', payload=payload)
         return r
 
-    """"
+    """
     Search port ( by MAc addres or Vlan), following arguments could be used :
 
     Args :
@@ -195,10 +194,10 @@ class NetdiscoAPI:
         result: Array value found
     """
     def search_port(self, payload):
-        r=self._get(self._root_uri+"search/port", payload=payload)
+        r=self._get(self._root_uri + 'search/port', payload=payload)
         return r
 
-    """"
+    """
     Search vlan ( by Vlan), following arguments could be used :
 
     Args :
@@ -207,12 +206,12 @@ class NetdiscoAPI:
         result: Array value found
     """
     def search_vlan(self, payload):
-        r=self._get(self._root_uri+"search/vlan", payload=payload)
+        r=self._get(self._root_uri + 'search/vlan', payload=payload)
         return r
 
 ###############  OBJECT SEARCHING
 
-    """"
+    """
     object_device get info by ip :
 
     Args :
@@ -221,10 +220,10 @@ class NetdiscoAPI:
         result: Array value found
     """
     def object_device(self, payload, ip=None):
-        r=self._get(self._root_uri+"object/device/" + ip, payload=payload)
+        r=self._get(self._root_uri + 'object/device/' + ip, payload=payload)
         return r
 
-    """"
+    """
     object_device get info device_ips by ip :
 
     Args :
@@ -233,5 +232,5 @@ class NetdiscoAPI:
         result: Array value found
     """
     def object_device_ips(self, payload, ip=None):
-        r=self._get(self._root_uri+"object/device/" + ip + "/device_ips", payload=payload)
+        r=self._get(self._root_uri + 'object/device/' + ip + '/device_ips', payload=payload)
         return r

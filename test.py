@@ -2,8 +2,6 @@
 
 from netdisco_api import NetdiscoAPI
 
-
-
 # Instantiate API object
 api = NetdiscoAPI(
   host = "http://127.0.0.1:2050/",
@@ -33,7 +31,7 @@ vlan_payload = {
 # search_device OK
 # r=api.search_device(device_payload)
 # search_node OK
-# r=api.search_node(node_payload)
+# r=api.search_node(node_payload)
 # search port OK
 # r=api.search_port(port_payload)
 # search vlan OK
