@@ -142,3 +142,6 @@ Desktop.ini
 # Thumbnail cache files
 ._*
 Thumbs.db
+
+# My files
+main.py
