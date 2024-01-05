@@ -2,6 +2,7 @@
 A wrapper for the webservice (REST API) for Netdisco.
 """
 
+import atexit
 import requests
 from requests.auth import HTTPBasicAuth
 import json
@@ -50,6 +51,9 @@ class NetdiscoAPI:
         # root request
         self._root_uri = "api/v1/"
 
+        # Automatic logout
+        atexit.register(self.logout)
+
         # Login to Netdisco (Get a session_id)
         if login:
            self.login(user, password)
@@ -88,7 +92,7 @@ class NetdiscoAPI:
             payload: data (Default: None)
 
         Returns:
-            result: The content of the key 'text' in the JSON returned by the server
+            result: The content of the data in JSON format returned by the server
         """
 
         # build headers based on custom and permanent headers
@@ -100,7 +104,7 @@ class NetdiscoAPI:
 
         # http get
         r = self._session.get(self._url + uri, verify=self._verify_cert, headers=headers, params=payload)
-        return r.text
+        return r.json()
 
     def _post(self, auth, data, uri=''):
         """
@@ -115,7 +119,7 @@ class NetdiscoAPI:
             result: The value of the key 'result' in the JSON returned by the server
         """
 
-        # with REST api , url could change, so if url isn't specified we take main url ( mainly for RPC method)
+        # with REST api , url could change, so if url isn't specified we take main url (mainly for RPC method)
         url=self._url + uri
 
         # build headers based on custom and permanent headers
@@ -133,38 +137,19 @@ class NetdiscoAPI:
             return(r.text)
         else :
             print(r.text + "  " + str(r.status_code))
-
     
-    def search_node(self, payload):
-        r=self._get(self._root_uri + 'search/node', payload=payload)
-        return r
-
-    """
-    Search node ( like computer / server all not a network management), following arguments could be used :
-
-    Args :
-        q (mandatory) (string) : MAC Address or IP Address or Hostname (without Domain Suffix) of a Node (supports SQL or "*" wildcards)
-        partial (boolean) : Partially match the "q" parameter (wildcard characters not required) Default value : false
-        deviceports (boolean) : MAC Address search will include Device Port MACs (Default value : true)
-        show_vendor (boolean) : Include interface Vendor in results (Default value : false)
-        archived (boolean) : Include archived records in results (Default value : false)
-        daterange (string) : Date Range in format "YYYY-MM-DD to YYYY-MM-DD" (Default value : 1970-01-01 to current date)
-        age_invert (boolean) : Results should NOT be within daterange (Default value : false)
-
-    Returns:
-        result: Array value found
-    """
+    # ----------------------------- Search Operations
 
     def search_device(self, payload):
         """
-        Search device ( like network component), following arguments could be used :
+        Search device (like network component), following arguments could be used:
 
-        Args :
-            q (str) : Partial match of Device contact, serial, module serials, location, name, description, dns, or any IP alias
+        Args (dict) :
+            q (str): Partial match of Device contact, serial, module serials, location, name, description, dns, or any IP alias
             name (str): Partial match of the Device name
-            location (str) : Partial match of the Device location
-            dns (str) : Partial match of any of the Device IP aliases
-            ip (str) : IP or IP Prefix within which the Device must have an interface address
+            location (str): Partial match of the Device location
+            dns (str): Partial match of any of the Device IP aliases
+            ip (str): IP or IP Prefix within which the Device must have an interface address
             description (str): Partial match of the Device description
             mac (str): MAC Address of the Device or any of its Interfaces
             model (str): Exact match of the Device model
@@ -172,65 +157,179 @@ class NetdiscoAPI:
             os_ver (str): Exact match of the Device operating system version
             vendor (str): Exact match of the Device vendor
             layers (str): OSI Layer which the device must support
-            matchall (bool): If true, all fields (except "q") must match the Device (Default value : false)
-            seeallcolumns (bool): If true, all columns of the Device will be shown (Default value : false)
+            matchall (bool): If true, all fields (except "q") must match the Device. Default value: false
+            seeallcolumns (bool): If true, all columns of the Device will be shown. Default value: false
 
         Returns:
             result: Array value found
         """
 
+        # Convert bool to str.lower()
+        if 'matchall' in payload: payload['matchall'] = str(payload['matchall']).lower()
+        if 'seeallcolumns' in payload: payload['seeallcolumns'] = str(payload['seeallcolumns']).lower()
+        
         r=self._get(self._root_uri + 'search/device', payload=payload)
         return r
+    
+    def search_node(self, payload):
+        """
+        Search node (like computer / server all not a network management), following arguments could be used:
 
-    """
-    Search port ( by MAc addres or Vlan), following arguments could be used :
+        Args (dict) :
+            q (mandatory) (str): MAC Address or IP Address or Hostname (without Domain Suffix) of a Node (supports SQL or "*" wildcards)
+            partial (bool): Partially match the "q" parameter (wildcard characters not required). Default value: false
+            deviceports (bool): MAC Address search will include Device Port MACs. Default value: true
+            show_vendor (bool): Include interface Vendor in results. Default value: false
+            archived (bool): Include archived records in results. Default value: false
+            daterange (str): Date Range in format "YYYY-MM-DD to YYYY-MM-DD". Default value: 1970-01-01 to current date
+            age_invert (bool): Results should NOT be within daterange. Default value: false
 
-    Args :
-        q (mandatory) (string) : Port name or VLAN or MAC address
-        partial (boolean) : Search for a partial match on parameter "q" Default value : true
-        uplink (boolean) : Include uplinks in results Default value : false
-        ethernet (boolean) : Only Ethernet type interfaces in results : true
-    Returns:
-        result: Array value found
-    """
-    def search_port(self, payload):
-        r=self._get(self._root_uri + 'search/port', payload=payload)
+        Returns:
+            result: Array value found
+        """
+
+        # Default values
+        final_payload = {
+            'deviceports': 'true'
+        }
+        
+        if 'q' in payload: final_payload['q'] = payload['q']
+
+        # Convert bool to str.lower()
+        if 'partial' in payload: final_payload['partial'] = str(payload['partial']).lower()
+        if 'deviceports' in payload: final_payload['deviceports'] = str(payload['deviceports']).lower()
+        if 'show_vendor' in payload: final_payload['show_vendor'] = str(payload['show_vendor']).lower()
+        if 'archived' in payload: final_payload['archived'] = str(payload['archived']).lower()
+        if 'age_invert' in payload: final_payload['age_invert'] = str(payload['age_invert']).lower()
+
+        r=self._get(self._root_uri + 'search/node', payload=final_payload)
         return r
 
-    """
-    Search vlan ( by Vlan), following arguments could be used :
+    def search_port(self, payload):
+        """
+        Search port (by MAC address or vlan), following arguments could be used:
 
-    Args :
-        q (mandatory) (string) : VLAN  number or nam
-    Returns:
-        result: Array value found
-    """
+        Args (dict) :
+            q (mandatory) (str): Port name or VLAN or MAC address
+            partial (bool): Search for a partial match on parameter "q". Default value: true
+            uplink (bool): Include uplinks in results. Default value: false
+            descr (bool): Search in the Port Description field. Default value: false
+            ethernet (bool): Only Ethernet type interfaces in results. Default value: true
+        Returns:
+            result: Array value found
+        """
+
+        # Default values
+        final_payload = {
+            'partial': 'true',
+            'ethernet': 'true'
+        }
+        
+        if 'q' in payload: final_payload['q'] = payload['q']
+
+        # Convert bool to str.lower()
+        if 'partial' in payload: final_payload['partial'] = str(payload['partial']).lower()
+        if 'uplink' in payload: final_payload['uplink'] = str(payload['uplink']).lower()
+        if 'descr' in payload: final_payload['descr'] = str(payload['descr']).lower()
+        if 'ethernet' in payload: final_payload['ethernet'] = str(payload['ethernet']).lower()
+
+        r=self._get(self._root_uri + 'search/port', payload=final_payload)
+        return r
+
     def search_vlan(self, payload):
+        """
+        Search vlan (by vlan), following arguments could be used:
+
+        Args :
+            q (mandatory) (str): VLAN name or number
+        Returns:
+            result: Array value found
+        """
+
         r=self._get(self._root_uri + 'search/vlan', payload=payload)
         return r
+    
+    # ----------------------------- Objects Operations
 
-###############  OBJECT SEARCHING
+    def object_device(self, ip=None):
+        """
+        Get device information by ip, following arguments could be used:
 
-    """
-    object_device get info by ip :
+        Args :
+            ip (mandatory) (str): Canonical IP of the Device. Use Search methods to find this.
+        Returns:
+            result: Array value found
+        """
 
-    Args :
-        ip (mandatory) (string) : ip
-    Returns:
-        result: Array value found
-    """
-    def object_device(self, payload, ip=None):
-        r=self._get(self._root_uri + 'object/device/' + ip, payload=payload)
+        r=self._get(self._root_uri + 'object/device/' + ip)
         return r
 
-    """
-    object_device get info device_ips by ip :
+    def object_device_ips(self, ip=None):
+        """
+        Netdisco > Device > Addresses
+        Returns device_ips rows for a given device, following arguments could be used:
+        
+        Args :
+            ip (mandatory) (str): Canonical IP of the Device. Use Search methods to find this.
+        Returns:
+            result: Array value found
+        """
+        
+        r=self._get(self._root_uri + 'object/device/' + ip + '/device_ips')
+        return r
+    
+    def object_device_modules(self, ip=None):
+        """
+        Netdisco > Device > Modules
+        Returns modules rows for a given device, following arguments could be used:
+        
+        Args :
+            ip (mandatory) (str): Canonical IP of the Device. Use Search methods to find this.
+        Returns:
+            result: Array value found
+        """
+        
+        r=self._get(self._root_uri + 'object/device/' + ip + '/modules')
+        return r
+    
+    def object_device_neighbors(self, payload, ip=None):
+        """
+        Netdisco > Device > Neighbors
+        Returns layer 2 neighbor relation data for a given device, following arguments could be used:
+        
+        Args :
+            ip (mandatory) (str): Canonical IP of the Device. Use Search methods to find this.
+            payload (dict): see following elements
+                scope (str): Scope of results, either "all", "cloud" (LLDP cloud), or "depth" (uses hops). Default value: depth
+                hops (str): When specifying Scope "depth", this is the number of hops. Default value: 1
+                vlan (str): Limit results to devices carrying this numeric VLAN ID
+        Returns:
+            result: Array value found
+        """
+        
+        r=self._get(self._root_uri + 'object/device/' + ip + '/neighbors', payload=payload)
+        return r
 
-    Args :
-        ip (mandatory) (string) : ip
-    Returns:
-        result: Array value found
-    """
-    def object_device_ips(self, payload, ip=None):
-        r=self._get(self._root_uri + 'object/device/' + ip + '/device_ips', payload=payload)
+    def object_device_nodes(self, payload, ip=None):
+        """
+        Returns the nodes found on a given Device, following arguments could be used:
+        
+        Args :
+            ip (mandatory) (str): Canonical IP of the Device. Use Search methods to find this.
+            payload (dict): see following elements
+                active_only (bool): Restrict results to active Nodes only. Default value: True
+        Returns:
+            result: Array value found
+        """
+
+        # Default values
+        final_payload = {
+            'active_only': 'true'
+        }
+        
+        # Convert bool to str.lower()
+        if payload:
+            if 'active_only' in payload: final_payload['active_only'] = str(payload['active_only']).lower()
+
+        r=self._get(self._root_uri + 'object/device/' + ip + '/nodes', payload=final_payload)
         return r
