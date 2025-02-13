@@ -138,6 +138,19 @@ class NetdiscoAPI:
         else :
             print(r.text + "  " + str(r.status_code))
     
+    # ----------------------------- Reports Operations
+
+    def report_deviceinventory(self):
+        """
+        Device Inventory Report
+       
+        Returns:
+            result: Array value found
+        """
+                
+        r=self._get(self._root_uri + 'report/device/deviceinventory')
+        return r
+
     # ----------------------------- Search Operations
 
     def search_device(self, payload):
