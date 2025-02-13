@@ -1,0 +1,9 @@
+[project]
+name = "python-netdisco-api"
+version = "0.5.0"
+description = "this a python client for netdisco tools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32.3",
+]
